@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Quiz Generator</title>
+    <title>色彩検定2級 四択クイズ</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="quiz.css">
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>ITパスポート対策クイズ</h1>
+            <h1>色彩検定2級 四択クイズ</h1>
         </div>
 
         <div class="quiz-container">
@@ -18,17 +18,66 @@
             <div class="quiz-setup" id="quizSetup">
                 <div class="form-group">
                     <label for="quizTitle">クイズのタイトル:</label>
-                    <input type="text" id="quizTitle" placeholder="例: ITパスポート対策クイズ" value="ITパスポート対策クイズ">
+                    <input type="text" id="quizTitle" placeholder="例: 色彩検定2級 四択クイズ" value="色彩検定2級 四択クイズ">
                 </div>
                 
                 <div class="form-row">
                     <div class="form-group">
                         <label for="questionCount">問題数:</label>
-                        <input type="number" id="questionCount" min="1" max="20" value="5">
+                        <input type="number" id="questionCount" min="1" value="5">
                     </div>
+
+                    <div class="form-group">
+                        <label for="quizMode">出題モード:</label>
+                        <select id="quizMode" onchange="handleModeChange()">
+                            <option value="all">全問題から出題</option>
+                            <option value="wrong">間違えた問題だけ</option>
+                            <option value="favorites">お気に入りの間違い問題</option>
+                            <option value="weak">苦手分野から出題</option>
+                            <option value="category">分野を選んで出題</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group mode-category" id="categoryField">
+                    <label for="categorySelect">分野:</label>
+                    <select id="categorySelect" onchange="handleModeChange()"></select>
+                </div>
+
+                <div class="study-dashboard">
+                    <div class="study-card">
+                        <span class="study-label">間違えた問題</span>
+                        <strong id="wrongCount">0</strong>
+                    </div>
+                    <div class="study-card">
+                        <span class="study-label">お気に入り</span>
+                        <strong id="favoriteCount">0</strong>
+                    </div>
+                    <div class="study-card">
+                        <span class="study-label">最高得点</span>
+                        <strong id="bestScore">未挑戦</strong>
+                    </div>
+                </div>
+
+                <div class="review-panel">
+                    <div class="panel-heading">
+                        <h2>間違えた問題欄</h2>
+                        <button class="btn secondary" type="button" onclick="startWrongQuiz()">まとめて復習</button>
+                    </div>
+                    <div class="review-list" id="wrongQuestionList"></div>
+                </div>
+
+                <div class="review-panel">
+                    <div class="panel-heading">
+                        <h2>苦手分野</h2>
+                    </div>
+                    <div class="weak-category-list" id="weakCategoryList"></div>
+                </div>
+
+                <div class="form-row">
                     
                     <div class="form-group">
-                        <button class="btn" onclick="generateQuiz()">クイズを生成</button>
+                        <button class="btn" onclick="generateQuiz()">クイズをはじめる</button>
                     </div>
                 </div>
             </div>
@@ -52,7 +101,13 @@
             <div class="quiz-results" id="quizResults">
                 <h2>クイズ結果</h2>
                 <div class="score" id="finalScore"></div>
-                <button class="btn" onclick="restartQuiz()">新しいクイズを作成</button>
+                <div class="result-detail" id="resultDetail"></div>
+                <div class="review-list result-wrong-list" id="resultWrongList"></div>
+                <div class="ranking-panel">
+                    <h3>ランキング</h3>
+                    <ol class="ranking-list" id="rankingList"></ol>
+                </div>
+                <button class="btn" onclick="restartQuiz()">もう一度挑戦する</button>
             </div>
         </div>
 
@@ -66,66 +121,447 @@
         let score = 0;
         let selectedAnswer = null;
         let hasAnswered = false;
+        let currentQuizModeLabel = '全問題';
+        let resultSaved = false;
+        let wrongQuestionsThisRound = [];
+
+        const questionBank = [
+            {
+                question: 'マンセル表色系で色を表す三属性の組み合わせはどれ？',
+                selections: ['色相・明度・彩度', '色相・濃度・透明度', '輝度・照度・反射率', '補色・面積・材質'],
+                answer: 0,
+                explanation: 'マンセル表色系では、色を色相・明度・彩度の三属性で整理します。'
+            },
+            {
+                question: 'トーンを決める主な要素として最も適切なものはどれ？',
+                selections: ['色相と面積', '明度と彩度', '光源と距離', '補色と残像'],
+                answer: 1,
+                explanation: 'トーンは明度と彩度の組み合わせによって、明るい・暗い・鮮やか・穏やかなどの印象を表します。'
+            },
+            {
+                question: '明度対比の説明として正しいものはどれ？',
+                selections: ['背景色によって対象の明るさが違って見える', '背景色によって対象の色相が反対方向にずれて見える', '面積が大きい色ほど必ず暗く見える', '暖色が寒色より遠くに見える'],
+                answer: 0,
+                explanation: '同じ明度の色でも、暗い背景では明るく、明るい背景では暗く感じられることがあります。'
+            },
+            {
+                question: '一般に進出色として感じられやすい色はどれ？',
+                selections: ['青', '青緑', '赤', '青紫'],
+                answer: 2,
+                explanation: '赤や橙などの暖色は、青などの寒色より前に出て見えやすい傾向があります。'
+            },
+            {
+                question: '補色関係として最も適切な組み合わせはどれ？',
+                selections: ['赤と橙', '黄と紫', '青と青紫', '緑と黄緑'],
+                answer: 1,
+                explanation: '補色は色相環で向かい合う関係の色です。黄と紫は代表的な補色関係です。'
+            },
+            {
+                question: '同一色相配色の説明として最も適切なものはどれ？',
+                selections: ['同じ色相で明度や彩度を変える配色', '補色だけを組み合わせる配色', '無彩色だけを使う配色', '3つの色相を均等間隔で使う配色'],
+                answer: 0,
+                explanation: '同一色相配色は、色相をそろえながら明度や彩度に差をつけて変化を出します。'
+            },
+            {
+                question: '色覚の多様性に配慮した情報表示として望ましいものはどれ？',
+                selections: ['赤と緑だけで重要度を分ける', '色だけで正誤を示す', '色に加えて文字や形でも区別する', '彩度の高い色だけを使う'],
+                answer: 2,
+                explanation: '色だけに頼らず、文字・形・記号・位置などを併用すると情報が伝わりやすくなります。'
+            },
+            {
+                question: '面積効果について正しい説明はどれ？',
+                selections: ['面積が大きいほど色は必ず暗く見える', '面積が大きいほど色は明るく鮮やかに見えることがある', '面積が小さいほど色相が必ず変わる', '面積は色の見えに影響しない'],
+                answer: 1,
+                explanation: '色は広い面積で見ると、小さな色見本より明るく鮮やかに感じられることがあります。'
+            },
+            {
+                question: '光の三原色として正しい組み合わせはどれ？',
+                selections: ['赤・黄・青', 'シアン・マゼンタ・イエロー', '赤・緑・青', '白・黒・灰'],
+                answer: 2,
+                explanation: '光の三原色はRGB、つまり赤・緑・青です。'
+            },
+            {
+                question: '印刷などで使われる色料の三原色として正しい組み合わせはどれ？',
+                selections: ['赤・緑・青', 'シアン・マゼンタ・イエロー', '赤・黄・緑', '青・紫・赤'],
+                answer: 1,
+                explanation: '色料の三原色はCMY、つまりシアン・マゼンタ・イエローです。'
+            },
+            {
+                question: '「誤っているもの」を選ぶ問題です。彩度についての説明として誤っているものはどれ？',
+                selections: ['色の鮮やかさを表す', '無彩色には彩度がない', '彩度が高いほど鮮やかに見える', '彩度が高いほど必ず明度も高くなる'],
+                answer: 3,
+                explanation: '彩度は鮮やかさの尺度で、明度とは別の属性です。彩度が高くても明度が高いとは限りません。'
+            },
+            {
+                question: '商品パッケージで、全体は落ち着いた色にし、一部だけ目立つ色を小面積で使う。この小面積の色は何と呼ばれやすい？',
+                selections: ['ベースカラー', 'アクセントカラー', 'セパレーションカラー', 'アソートカラー'],
+                answer: 1,
+                explanation: 'アクセントカラーは、配色全体に変化や注目点を作るために小面積で使う強調色です。'
+            },
+            {
+                question: '配色で、隣り合う色どうしがなじみにくいとき、白・黒・灰などを間に入れて調整する方法はどれ？',
+                selections: ['グラデーション', 'セパレーション', 'シミュレーション', 'トリミング'],
+                answer: 1,
+                explanation: 'セパレーションは、色と色の間に分離色を入れて見え方を整える配色技法です。'
+            },
+            {
+                question: '「高明度・低彩度」のトーンが与えやすい印象として最も近いものはどれ？',
+                selections: ['重厚で硬い', '派手で強い', '淡くやさしい', '暗く沈んだ'],
+                answer: 2,
+                explanation: '高明度・低彩度の色は、淡い、軽い、やさしい、ソフトといった印象につながりやすいです。'
+            },
+            {
+                question: '道路標識や警告表示に、赤や黄が使われやすい理由として最も適切なものはどれ？',
+                selections: ['常に背景と同じ明度になるため', '注意を引きやすく、危険や警告の意味と結びつきやすいため', 'どの光源下でも色が絶対に変化しないため', '寒色より必ず小さく見えるため'],
+                answer: 1,
+                explanation: '赤や黄は誘目性が高く、危険・注意などの意味と結びつけて使われることが多い色です。'
+            },
+            {
+                question: '色相環で近い位置にある色を組み合わせる配色はどれ？',
+                selections: ['類似色相配色', '補色色相配色', '無彩色配色', 'トライアド配色'],
+                answer: 0,
+                explanation: '類似色相配色は、色相環上で近い色相を組み合わせるため、まとまりを作りやすい配色です。'
+            },
+            {
+                question: '「最も適切な対応」を選んでください。RGBカラーモデルが主に使われる場面はどれ？',
+                selections: ['モニターやスマートフォンの画面表示', 'プロセスカラー印刷', '染料の混色だけ', 'マンセル値の表記だけ'],
+                answer: 0,
+                explanation: 'RGBは加法混色を基本とするため、ディスプレイなど光で色を表示する場面に適しています。'
+            },
+            {
+                question: '白い照明の下では同じに見えた2つの色が、別の照明では違って見える現象に関係が深い用語はどれ？',
+                selections: ['メタメリズム', 'ハレーション', 'シンメトリー', 'タイポグラフィ'],
+                answer: 0,
+                explanation: 'メタメリズムは、条件によって色の一致・不一致が変わって見える現象です。'
+            },
+            {
+                question: '「先に結論を判断する」問題です。黒い背景上の同じ灰色は、白い背景上よりどう見えやすい？',
+                selections: ['明るく見えやすい', '暗く見えやすい', '必ず赤みに見える', '必ず彩度がなくなる'],
+                answer: 0,
+                explanation: '明度対比により、暗い背景上の灰色は相対的に明るく見えやすくなります。'
+            },
+            {
+                question: 'インテリアで天井を明るく、床を暗めにすると得られやすい効果はどれ？',
+                selections: ['空間が安定して感じられやすい', '天井が必ず低く見える', '床が浮いて見えやすい', '全体が必ず派手になる'],
+                answer: 0,
+                explanation: '上を明るく下を暗くすると、自然な明暗の印象に近く、安定感を出しやすくなります。'
+            },
+            {
+                question: 'ファッション配色で、全身を近いトーンでまとめると得られやすい効果はどれ？',
+                selections: ['統一感が出やすい', '必ず補色対比になる', '色相差が最大になる', '素材感が消える'],
+                answer: 0,
+                explanation: 'トーンをそろえると、色相が多少異なっても全体に統一感を作りやすくなります。'
+            },
+            {
+                question: '色名の分類で、「あざやかな赤」「くすんだ黄緑」のように修飾語を付けた色名はどれ？',
+                selections: ['基本色名', '系統色名', '固有色名', '商品色名'],
+                answer: 1,
+                explanation: '系統色名は、基本色名に明度・彩度などを表す修飾語を加えて色を表します。'
+            },
+            {
+                question: '「順序」を問う問題です。可視光の波長が長い側に位置する色として最も適切なものはどれ？',
+                selections: ['紫', '青', '緑', '赤'],
+                answer: 3,
+                explanation: '可視光では、赤は紫や青よりも長波長側に位置します。'
+            },
+            {
+                question: '印刷物で画面上の鮮やかなRGB色がそのまま再現しにくいことがある主な理由はどれ？',
+                selections: ['RGBとCMYKでは表現できる色域が異なるため', '印刷では明度を使わないため', '紙には色相が存在しないため', 'CMYKは加法混色だから'],
+                answer: 0,
+                explanation: 'ディスプレイと印刷では色の作り方や色域が異なるため、同じ見え方にならない場合があります。'
+            },
+            {
+                question: '高齢者にも読みやすい表示にする工夫として最も適切なものはどれ？',
+                selections: ['背景と文字の明度差を十分に確保する', '淡い色どうしだけで情報を分ける', '小さな文字に低彩度色を使う', '赤と緑だけで分類する'],
+                answer: 0,
+                explanation: '読みやすさには、文字と背景の明度差や十分なサイズが重要です。色だけに頼る表示は避けます。'
+            },
+            {
+                question: '同じ色でも、光沢のある面とつや消しの面で見え方が変わる理由として最も近いものはどれ？',
+                selections: ['材質や表面状態が反射の仕方に影響するため', '色相が物理的に消えるため', '無彩色だけになるため', '補色関係がなくなるため'],
+                answer: 0,
+                explanation: '表面の質感や光沢は光の反射に影響し、同じ色でも明るさや鮮やかさの印象を変えます。'
+            },
+            {
+                question: '「用途から選ぶ」問題です。病院の待合室に穏やかで清潔な印象を出したい場合、比較的向いている配色はどれ？',
+                selections: ['高彩度の赤と黒の強い対比', '低彩度で明るめの青緑や白を中心にした配色', '暗い紫と暗い茶だけの配色', '蛍光色を全面に使う配色'],
+                answer: 1,
+                explanation: '明るく低彩度の寒色系や白は、清潔感や落ち着きの印象を作りやすい配色です。'
+            },
+            {
+                question: '「名称から特徴」を選ぶ問題です。グラデーション配色の特徴として最も適切なものはどれ？',
+                selections: ['色相・明度・彩度などを段階的に変化させる', '必ず正反対の色だけを使う', '無彩色を禁止する', '1色を小面積だけに使う'],
+                answer: 0,
+                explanation: 'グラデーションは、色の属性を連続的・段階的に変化させてつながりを作る配色です。'
+            },
+            {
+                question: '「言い換え」を選ぶ問題です。低明度の色を多く使った配色の印象として最も近いものはどれ？',
+                selections: ['軽快で開放的', '重厚で落ち着いた', '必ず暖かい', '必ず透明感がある'],
+                answer: 1,
+                explanation: '低明度の色は、重い、落ち着いた、シック、重厚といった印象につながりやすいです。'
+            },
+            {
+                question: '「原因」を問う問題です。赤い食品パッケージが食欲や活気の印象を出しやすいのは、主に色のどの働きに関係する？',
+                selections: ['心理的・象徴的な印象', '重力の変化', '紙の厚み', '音の高さ'],
+                answer: 0,
+                explanation: '色には心理的・象徴的な印象があり、赤は活気、熱、食欲などのイメージと結びつけられやすい色です。'
+            }
+        ];
+
+        const questionCategories = [
+            '表色系', 'トーン', '色の見え方', '色の見え方', '配色', '配色',
+            'ユニバーサルデザイン', '色の見え方', '混色', '混色', '色の三属性',
+            '配色', '配色', 'トーン', '色の心理効果', '配色', '混色',
+            '色の見え方', '色の見え方', 'インテリア', 'ファッション', '色名',
+            '光と色', '混色', 'ユニバーサルデザイン', '素材と質感', '色の心理効果',
+            '配色', 'トーン', '色の心理効果'
+        ];
+
+        questionBank.forEach((question, index) => {
+            question.id = `q${index + 1}`;
+            question.category = questionCategories[index] || 'その他';
+        });
+
+        const STORAGE_KEYS = {
+            wrong: 'colorQuizWrongQuestions',
+            scores: 'colorQuizScoreHistory'
+        };
 
         // 初期化
         document.addEventListener('DOMContentLoaded', function() {
+            const countInput = document.getElementById('questionCount');
+            countInput.max = questionBank.length;
+            countInput.title = `1〜${questionBank.length}問まで選べます`;
+            populateCategorySelect();
+            handleModeChange();
+            renderStudyDashboard();
             updateStatus();
         });
 
         // ステータス更新
         function updateStatus() {
             const statusEl = document.getElementById('status');
-            statusEl.textContent = 'Ready to generate ITパスポート quiz';
-            statusEl.style.color = '#28a745';
+            statusEl.textContent = '色彩検定2級の問題を準備できています';
+            statusEl.style.color = '#9f3a4d';
         }
 
-        // クイズ生成
-        async function generateQuiz() {
-            const title = document.getElementById('quizTitle').value.trim();
-            const count = parseInt(document.getElementById('questionCount').value);
+        function loadStore(key, fallback) {
+            try {
+                return JSON.parse(localStorage.getItem(key)) || fallback;
+            } catch (error) {
+                return fallback;
+            }
+        }
 
-            if (!title || count < 1) {
-                alert('すべての項目を正しく入力してください');
+        function saveStore(key, value) {
+            localStorage.setItem(key, JSON.stringify(value));
+        }
+
+        function getWrongStore() {
+            return loadStore(STORAGE_KEYS.wrong, {});
+        }
+
+        function getScoreHistory() {
+            return loadStore(STORAGE_KEYS.scores, []);
+        }
+
+        function getQuestionById(id) {
+            return questionBank.find(question => question.id === id);
+        }
+
+        function getCategories() {
+            return [...new Set(questionBank.map(question => question.category))];
+        }
+
+        function populateCategorySelect() {
+            const categorySelect = document.getElementById('categorySelect');
+            categorySelect.innerHTML = '';
+            getCategories().forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                categorySelect.appendChild(option);
+            });
+        }
+
+        function getWrongQuestions() {
+            return Object.values(getWrongStore())
+                .map(saved => ({...getQuestionById(saved.id), ...saved}))
+                .filter(question => question.id);
+        }
+
+        function getFavoriteWrongQuestions() {
+            return getWrongQuestions().filter(question => question.favorite);
+        }
+
+        function getWeakCategories() {
+            const totals = {};
+            getWrongQuestions().forEach(question => {
+                totals[question.category] = (totals[question.category] || 0) + question.wrongCount;
+            });
+
+            return Object.entries(totals)
+                .sort((a, b) => b[1] - a[1])
+                .map(([category, count]) => ({category, count}));
+        }
+
+        function handleModeChange() {
+            const mode = document.getElementById('quizMode').value;
+            const categoryField = document.getElementById('categoryField');
+            const countInput = document.getElementById('questionCount');
+            syncCategorySelection(mode);
+            const source = getQuizSource(mode);
+
+            categoryField.style.display = mode === 'weak' || mode === 'category' ? 'block' : 'none';
+            countInput.max = Math.max(source.length, 1);
+            countInput.title = source.length ? `1〜${source.length}問まで選べます` : '出題できる問題がありません';
+            if (source.length && Number(countInput.value) > source.length) {
+                countInput.value = source.length;
+            }
+        }
+
+        function syncCategorySelection(mode) {
+            if (mode !== 'weak') return;
+
+            const categorySelect = document.getElementById('categorySelect');
+            const weakCategories = getWeakCategories().map(item => item.category);
+            if (weakCategories.length && !weakCategories.includes(categorySelect.value)) {
+                categorySelect.value = weakCategories[0];
+            }
+        }
+
+        function getQuizSource(mode = document.getElementById('quizMode').value) {
+            const category = document.getElementById('categorySelect').value;
+            if (mode === 'wrong') return getWrongQuestions();
+            if (mode === 'favorites') return getFavoriteWrongQuestions();
+            if (mode === 'weak') {
+                const weakCategories = getWeakCategories();
+                if (!weakCategories.length) return [];
+
+                const weakCategoryNames = weakCategories.map(item => item.category);
+                const selectedCategory = weakCategoryNames.includes(category) ? category : weakCategories[0].category;
+                return questionBank.filter(question => question.category === selectedCategory);
+            }
+            if (mode === 'category') {
+                return questionBank.filter(question => question.category === category);
+            }
+            return questionBank;
+        }
+
+        function getModeLabel(mode = document.getElementById('quizMode').value) {
+            const labels = {
+                all: '全問題',
+                wrong: '間違えた問題',
+                favorites: 'お気に入り',
+                weak: `苦手分野: ${document.getElementById('categorySelect').value}`,
+                category: `分野: ${document.getElementById('categorySelect').value}`
+            };
+            return labels[mode] || '全問題';
+        }
+
+        function renderStudyDashboard() {
+            const wrongQuestions = getWrongQuestions();
+            const favorites = wrongQuestions.filter(question => question.favorite);
+            const scores = getScoreHistory();
+            const best = [...scores].sort((a, b) => b.percentage - a.percentage || b.score - a.score)[0];
+
+            document.getElementById('wrongCount').textContent = wrongQuestions.length;
+            document.getElementById('favoriteCount').textContent = favorites.length;
+            document.getElementById('bestScore').textContent = best ? `${best.score}/${best.total} (${best.percentage}%)` : '未挑戦';
+            renderWrongQuestionList();
+            renderWeakCategoryList();
+            renderRanking();
+        }
+
+        function renderWrongQuestionList() {
+            const list = document.getElementById('wrongQuestionList');
+            const wrongQuestions = getWrongQuestions().sort((a, b) => b.wrongCount - a.wrongCount);
+            if (!wrongQuestions.length) {
+                list.innerHTML = '<p class="empty-text">まだ間違えた問題はありません。</p>';
                 return;
             }
 
-            document.getElementById('loading').classList.add('show');
+            list.innerHTML = '';
+            wrongQuestions.forEach(question => {
+                list.appendChild(createQuestionCard(question));
+            });
+        }
 
-            try {
-                const response = await fetch('/api/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        title: title,
-                        count: count
-                    })
-                });
+        function createQuestionCard(question) {
+            const card = document.createElement('div');
+            card.className = 'review-item';
+            const favoriteLabel = question.favorite ? 'お気に入り解除' : 'お気に入り';
+            card.innerHTML = `
+                <div class="review-meta">
+                    <span>${question.category}</span>
+                    <span>${question.wrongCount}回ミス</span>
+                </div>
+                <p>${question.question}</p>
+                <div class="review-answer">正解: ${question.selections[question.answer]}</div>
+                <div class="review-actions">
+                    <button class="mini-btn" type="button" onclick="toggleFavorite('${question.id}')">${favoriteLabel}</button>
+                </div>
+            `;
+            return card;
+        }
 
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'API error');
-                }
-
-                const data = await response.json();
-                quizData = data.data;
-
-                if (!Array.isArray(quizData) || quizData.length === 0) {
-                    throw new Error('Invalid quiz data format');
-                }
-
-                currentQuestionIndex = 0;
-                score = 0;
-                document.getElementById('quizTitleDisplay').textContent = data.title;
-                startQuiz();
-                
-            } catch (error) {
-                console.error('Error:', error);
-                alert('クイズの生成に失敗しました: ' + error.message);
-            } finally {
-                document.getElementById('loading').classList.remove('show');
+        function renderWeakCategoryList() {
+            const list = document.getElementById('weakCategoryList');
+            const weakCategories = getWeakCategories();
+            if (!weakCategories.length) {
+                list.innerHTML = '<p class="empty-text">回答すると苦手分野が表示されます。</p>';
+                return;
             }
+
+            list.innerHTML = '';
+            weakCategories.forEach(({category, count}) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'category-chip';
+                button.textContent = `${category} ${count}回`;
+                button.onclick = () => startCategoryQuiz(category, true);
+                list.appendChild(button);
+            });
+        }
+
+        // クイズ生成
+        function generateQuiz() {
+            const title = document.getElementById('quizTitle').value.trim();
+            const count = parseInt(document.getElementById('questionCount').value);
+            const mode = document.getElementById('quizMode').value;
+            const source = getQuizSource(mode);
+
+            if (!source.length) {
+                alert('このモードで出題できる問題がまだありません');
+                return;
+            }
+
+            if (!title || count < 1 || count > source.length) {
+                alert(`問題数は1〜${source.length}の範囲で入力してください`);
+                return;
+            }
+
+            quizData = shuffle(source).slice(0, count);
+            currentQuestionIndex = 0;
+            score = 0;
+            resultSaved = false;
+            wrongQuestionsThisRound = [];
+            currentQuizModeLabel = getModeLabel(mode);
+            document.getElementById('quizTitleDisplay').textContent = title;
+            startQuiz();
+        }
+
+        function startWrongQuiz() {
+            document.getElementById('quizMode').value = 'wrong';
+            handleModeChange();
+            generateQuiz();
+        }
+
+        function startCategoryQuiz(category, weakMode) {
+            document.getElementById('quizMode').value = weakMode ? 'weak' : 'category';
+            document.getElementById('categorySelect').value = category;
+            handleModeChange();
+            generateQuiz();
         }
 
         // クイズ開始
@@ -197,10 +633,17 @@
             feedback.style.display = 'block';
             if (isCorrect) {
                 feedback.className = 'answer-feedback correct';
-                feedback.textContent = '正解！';
+                feedback.textContent = `正解！ ${question.explanation}`;
             } else {
                 feedback.className = 'answer-feedback incorrect';
-                feedback.textContent = `不正解。正解は「${question.selections[correctAnswer]}」です。`;
+                recordWrongQuestion(question);
+                const favoriteLabel = (getWrongStore()[question.id] || {}).favorite ? 'お気に入り解除' : 'お気に入り登録';
+                feedback.innerHTML = `
+                    不正解。正解は「${question.selections[correctAnswer]}」です。${question.explanation}
+                    <div class="feedback-actions">
+                        <button class="mini-btn" type="button" onclick="toggleFavorite('${question.id}')">${favoriteLabel}</button>
+                    </div>
+                `;
             }
 
             if (currentQuestionIndex < quizData.length - 1) {
@@ -224,6 +667,10 @@
             const percentage = Math.round((score / quizData.length) * 100);
             document.getElementById('finalScore').textContent = 
                 `${score} / ${quizData.length} 問正解 (${percentage}%)`;
+            document.getElementById('resultDetail').textContent = `${currentQuizModeLabel}で挑戦しました`;
+            saveScoreResult(percentage);
+            renderResultWrongList();
+            renderStudyDashboard();
         }
 
         // クイズリスタート
@@ -233,6 +680,119 @@
             quizData = [];
             currentQuestionIndex = 0;
             score = 0;
+            wrongQuestionsThisRound = [];
+            resultSaved = false;
+            handleModeChange();
+            renderStudyDashboard();
+        }
+
+        function recordWrongQuestion(question) {
+            const wrongStore = getWrongStore();
+            const saved = wrongStore[question.id] || {
+                id: question.id,
+                question: question.question,
+                selections: question.selections,
+                answer: question.answer,
+                explanation: question.explanation,
+                category: question.category,
+                wrongCount: 0,
+                favorite: false
+            };
+
+            saved.wrongCount += 1;
+            saved.lastWrongAt = new Date().toISOString();
+            wrongStore[question.id] = saved;
+            saveStore(STORAGE_KEYS.wrong, wrongStore);
+
+            if (!wrongQuestionsThisRound.some(item => item.id === question.id)) {
+                wrongQuestionsThisRound.push(saved);
+            }
+        }
+
+        function toggleFavorite(questionId) {
+            const wrongStore = getWrongStore();
+            const question = getQuestionById(questionId);
+            if (!question) return;
+
+            const saved = wrongStore[questionId] || {
+                id: question.id,
+                question: question.question,
+                selections: question.selections,
+                answer: question.answer,
+                explanation: question.explanation,
+                category: question.category,
+                wrongCount: 0,
+                favorite: false
+            };
+            saved.favorite = !saved.favorite;
+            wrongStore[questionId] = saved;
+            saveStore(STORAGE_KEYS.wrong, wrongStore);
+            renderStudyDashboard();
+            renderResultWrongList();
+        }
+
+        function saveScoreResult(percentage) {
+            if (resultSaved || !quizData.length) return;
+            const history = getScoreHistory();
+            history.push({
+                id: Date.now().toString(),
+                date: new Date().toISOString(),
+                title: document.getElementById('quizTitle').value.trim() || 'クイズ',
+                mode: currentQuizModeLabel,
+                score,
+                total: quizData.length,
+                percentage
+            });
+            saveStore(STORAGE_KEYS.scores, history.slice(-50));
+            resultSaved = true;
+        }
+
+        function renderResultWrongList() {
+            const list = document.getElementById('resultWrongList');
+            if (!list) return;
+            if (!wrongQuestionsThisRound.length) {
+                list.innerHTML = '<p class="empty-text">今回間違えた問題はありません。</p>';
+                return;
+            }
+
+            list.innerHTML = '<h3>今回間違えた問題</h3>';
+            wrongQuestionsThisRound.forEach(question => {
+                const latest = getWrongStore()[question.id] || question;
+                list.appendChild(createQuestionCard({...question, ...latest}));
+            });
+        }
+
+        function renderRanking() {
+            const list = document.getElementById('rankingList');
+            if (!list) return;
+            const ranking = getScoreHistory()
+                .sort((a, b) => b.percentage - a.percentage || b.score - a.score || new Date(b.date) - new Date(a.date))
+                .slice(0, 10);
+
+            if (!ranking.length) {
+                list.innerHTML = '<li class="empty-text">まだランキングはありません。</li>';
+                return;
+            }
+
+            list.innerHTML = '';
+            ranking.forEach(result => {
+                const li = document.createElement('li');
+                const date = new Date(result.date).toLocaleDateString('ja-JP');
+                li.innerHTML = `
+                    <strong>${result.score}/${result.total} (${result.percentage}%)</strong>
+                    <span>${result.mode}・${date}</span>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        function shuffle(items) {
+            const copied = [...items];
+            for (let i = copied.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copied[i], copied[j]] = [copied[j], copied[i]];
+            }
+            return copied;
         }
     </script>
 </body>
